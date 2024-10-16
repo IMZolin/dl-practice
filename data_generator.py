@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
@@ -53,10 +55,13 @@ class DataGenerator(torch.nn.Module):
         avg_loss = np.mean(losses)
         self.__callback(avg_loss)
 
-    def train_loop(self, epochs, train_dataloader, lr):
+    def train_loop(self, epochs, train_dataloader, lr, save_path):
         for epoch in range(epochs):
             print(f'Epoch {epoch + 1}/{epochs}')
             self.__train_epoch(train_dataloader, lr)
+            if save_path and (epoch + 1) % 10 == 0:
+                self.save_model(save_path, epoch)
+                self.draw_losses(save_path, epoch)
 
     def eval_model(self):
         self.eval()
@@ -86,17 +91,22 @@ class DataGenerator(torch.nn.Module):
                     break
         return decoder.decode(tokenizer.convert_ids_to_tokens(tokens))
 
-    def draw_losses(self, epochs):
+    def draw_losses(self, save_path, epoch):
         plt.figure(figsize=(10, 6))
-        plt.plot(epochs, self.__train_losses, label='Train Loss', marker='o')
-        plt.plot(epochs, self.__eval_losses, label='Eval Loss', marker='o')
+        plt.plot(range(1, epoch + 2), self.__train_losses, label='Train Loss', marker='o')
+        plt.plot(range(1, epoch + 2), self.__eval_losses, label='Eval Loss', marker='o')
 
         plt.title('Loss during Training and Evaluation')
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
         plt.legend()
         plt.grid(True)
-        plt.show()
+
+        os.makedirs(save_path, exist_ok=True)
+        save_filename = os.path.join(save_path, f'loss_plot_epoch_{epoch + 1}.png')
+        plt.savefig(save_filename)
+        plt.close()
+        print(f'Loss plot saved to {save_filename}')
 
     def save_model(self, save_path, epoch):
         model_state = {
@@ -106,5 +116,6 @@ class DataGenerator(torch.nn.Module):
             'train_losses': self.__train_losses,
             'eval_losses': self.__eval_losses,
         }
-        torch.save(model_state, save_path)
-        print(f'Model saved to {save_path} at epoch {epoch}')
+        save_filename = os.path.join(save_path, f'model_epoch_{epoch + 1}.pth')
+        torch.save(model_state, save_filename)
+        print(f'Model saved to {save_filename} at epoch {epoch + 1}')
