@@ -64,8 +64,6 @@ def sgd(params, loss_fn, num_iterations, learning_rate, stop_loss_value=-0.007, 
             print(f"Iteration {i}: Reached stop loss value = {stop_loss_value}. Stopping optimization.")
             break
 
-    return params
-
 
 if __name__ == '__main__':
     print(clean_text(read_file('./data/books_txt/AKSAKOW/bagrov.txt')))

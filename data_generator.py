@@ -7,8 +7,6 @@ from tokenizers.decoders import WordPiece
 from tqdm import tqdm
 
 decoder = WordPiece()
-
-
 class DataGenerator(torch.nn.Module):
     def __init__(self, vocab_size, test_dataloader, embed_dim, num_layers, pad_token_idx, device):
         super().__init__()
@@ -22,6 +20,9 @@ class DataGenerator(torch.nn.Module):
         self.__test_dataloader = test_dataloader
         self.__train_losses = []
         self.__eval_losses = []
+
+        # Move the model to the correct device (cuda or cpu)
+        self.to(self.__device)
 
     def forward(self, x):
         embedded = self.__embedding(x)
@@ -74,22 +75,25 @@ class DataGenerator(torch.nn.Module):
                 logits = self(src)
                 loss = self.__criterion(logits.transpose(1, 2), trg)
                 eval_losses.append(loss.item())
-        return np.mean(self.__eval_losses)
+        return np.mean(eval_losses)
 
     def continues_sentence(self, sentence, tokenizer, max_len=30):
         self.eval()
         tokens = tokenizer.encode(sentence.lower(), add_special_tokens=False)
         tokens = torch.tensor(tokens).unsqueeze(0).to(self.__device)
+
         for _ in range(max_len):
             with torch.no_grad():
                 output = self(tokens)
                 next_token_logits = output[:, -1, :]
                 next_token = torch.argmax(next_token_logits, dim=-1).item()
                 tokens = torch.cat((tokens, torch.tensor([[next_token]]).to(self.__device)), dim=1)
-
                 if next_token == tokenizer.sep_token_id:
                     break
-        return decoder.decode(tokenizer.convert_ids_to_tokens(tokens))
+
+        token_ids = tokens.squeeze().tolist()
+        token_list = tokenizer.convert_ids_to_tokens(token_ids)
+        return decoder.decode(token_list)
 
     def draw_losses(self, save_path, epoch):
         plt.figure(figsize=(10, 6))
@@ -119,3 +123,30 @@ class DataGenerator(torch.nn.Module):
         save_filename = os.path.join(save_path, f'model_epoch_{epoch + 1}.pth')
         torch.save(model_state, save_filename)
         print(f'Model saved to {save_filename} at epoch {epoch + 1}')
+
+    def load_model(self, save_path, specific_epoch=None):
+        if not os.path.exists(save_path):
+            raise FileNotFoundError(f"Save path '{save_path}' does not exist.")
+
+        model_files = [f for f in os.listdir(save_path) if f.startswith('model_epoch_') and f.endswith('.pth')]
+        if not model_files:
+            raise FileNotFoundError(f"No saved models found in '{save_path}'.")
+
+        model_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
+        if specific_epoch is None:
+            model_file = model_files[-1]
+        else:
+            model_file = f"model_epoch_{specific_epoch}.pth"
+            if model_file not in model_files:
+                raise FileNotFoundError(f"Model for epoch {specific_epoch} not found in '{save_path}'.")
+        model_path = os.path.join(save_path, model_file)
+        checkpoint = torch.load(model_path, map_location=self.__device)
+
+        self.load_state_dict(checkpoint['model_state_dict'])
+        if self.__optimizer:
+            self.__optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+        self.__train_losses = checkpoint.get('train_losses', [])
+        self.__eval_losses = checkpoint.get('eval_losses', [])
+
+        print(f"Loaded model from {model_file}")
