@@ -2,3 +2,4 @@ data/
 data.tar.gz
 .idea/
 __pycache__/
+saved_models/*.pth
